@@ -1,15 +1,17 @@
+import argparse
 import json
 import random
 import time
 import uuid
 from datetime import datetime, timezone
-import argparse
+from pathlib import Path
 
 
 USERS = [
     f"user_{i:04d}"
     for i in range(1, 101)
 ]
+
 
 PRODUCTS = [
     {
@@ -103,12 +105,11 @@ SEARCH_TERMS = [
 
 
 def generate_event():
-    """
-    Generate one realistic e-commerce event.
-    """
+    """Generate one e-commerce event."""
 
     user = random.choice(USERS)
     product = random.choice(PRODUCTS)
+
     event_type = random.choices(
         population=list(EVENT_TYPES.keys()),
         weights=list(EVENT_TYPES.values()),
@@ -133,46 +134,92 @@ def generate_event():
     return event
 
 
+def generate_file(number_of_events):
+    """Generate events.jsonl as UTF-8."""
+
+    output_dir = Path(__file__).parent.parent / "data"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    output_file = output_dir / "events.jsonl"
+
+    with output_file.open(
+        "w",
+        encoding="utf-8",
+        newline="\n",
+    ) as file:
+
+        for _ in range(number_of_events):
+            event = generate_event()
+
+            file.write(
+                json.dumps(event, ensure_ascii=False) + "\n"
+            )
+
+    print()
+    print("=" * 60)
+    print("EVENT GENERATION COMPLETE")
+    print("=" * 60)
+    print(f"Events : {number_of_events}")
+    print(f"File   : {output_file}")
+    print(f"Format : UTF-8 JSONL")
+
+
+def stream_events(interval):
+    """Continuously generate events to the terminal."""
+
+    print("Starting e-commerce event stream...")
+    print("Press Ctrl+C to stop.\n")
+
+    try:
+
+        while True:
+
+            event = generate_event()
+
+            print(
+                json.dumps(
+                    event,
+                    ensure_ascii=False,
+                ),
+                flush=True,
+            )
+
+            time.sleep(interval)
+
+    except KeyboardInterrupt:
+
+        print("\nEvent generator stopped.")
+
+
 def main():
+
     parser = argparse.ArgumentParser(
-        description="Generate e-commerce events"
+        description="E-commerce event generator"
     )
 
     parser.add_argument(
         "--events",
         type=int,
         default=0,
-        help="Number of events to generate. Use 0 for continuous generation.",
+        help="Number of events to generate into data/events.jsonl.",
     )
 
     parser.add_argument(
         "--interval",
         type=float,
         default=1.0,
-        help="Seconds between events in continuous mode.",
+        help="Seconds between events in streaming mode.",
     )
 
     args = parser.parse_args()
 
     if args.events > 0:
-        for _ in range(args.events):
-            event = generate_event()
-            print(json.dumps(event))
+
+        generate_file(args.events)
 
     else:
-        print("Starting e-commerce event generator...")
-        print("Press Ctrl+C to stop.\n")
 
-        try:
-            while True:
-                event = generate_event()
-
-                print(json.dumps(event))
-
-                time.sleep(args.interval)
-
-        except KeyboardInterrupt:
-            print("\nEvent generator stopped.")
+        stream_events(args.interval)
 
 
 if __name__ == "__main__":

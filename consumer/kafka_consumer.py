@@ -1,94 +1,59 @@
 import json
+from confluent_kafka import Consumer, KafkaException
+from spark.utils.logging_config import get_logger
+from config.config import config
 
-from kafka import KafkaConsumer
-
-
-KAFKA_BROKER = "localhost:9092"
-KAFKA_TOPIC = "ecommerce-events"
-CONSUMER_GROUP = "ecommerce-analytics-consumer"
-
-
-def create_consumer():
-
-    return KafkaConsumer(
-        KAFKA_TOPIC,
-        bootstrap_servers=KAFKA_BROKER,
-
-        # Get raw bytes first.
-        # We will deserialize manually so that one
-        # bad message doesn't crash the consumer.
-        value_deserializer=lambda value: value,
-
-        auto_offset_reset="earliest",
-
-        group_id=CONSUMER_GROUP,
-
-        enable_auto_commit=True,
-    )
-
+logger = get_logger("kafka_debug_consumer")
 
 def main():
-
-    consumer = create_consumer()
-
-    print("=" * 60)
-    print("E-COMMERCE KAFKA CONSUMER")
-    print("=" * 60)
-
-    print(f"Broker : {KAFKA_BROKER}")
-    print(f"Topic  : {KAFKA_TOPIC}")
-    print(f"Group  : {CONSUMER_GROUP}")
-    print()
-    print("Waiting for events...")
-    print("Press Ctrl+C to stop.")
-    print()
+    # 1. Initialize Consumer configuration
+    consumer_config = {
+        'bootstrap.servers': config.KAFKA_BOOTSTRAP_SERVERS,
+        'group.id': 'debug-consumer-group',
+        'auto.offset.reset': 'earliest', # Start reading from the beginning if no offset exists
+        'enable.auto.commit': True       # Automatically commit offsets after reading
+    }
+    
+    consumer = Consumer(consumer_config)
+    
+    # 2. Subscribe to the topic
+    consumer.subscribe([config.KAFKA_TOPIC])
+    logger.info(f"Subscribed to topic: {config.KAFKA_TOPIC}")
+    logger.info("Waiting for messages... (Press Ctrl+C to stop)")
 
     try:
+        while True:
+            # 3. Poll for messages (timeout in seconds)
+            msg = consumer.poll(timeout=1.0)
+            
+            if msg is None:
+                continue
+            if msg.error():
+                logger.error(f"Consumer error: {msg.error()}")
+                continue
 
-        for message in consumer:
-
+            # 4. Extract and print message details
+            event_value = msg.value().decode('utf-8')
+            
+            # Pretty-print the JSON for readability
             try:
-
-                # bytes -> string
-                raw_value = message.value.decode("utf-8")
-
-                # string -> dictionary
-                event = json.loads(raw_value)
-
-                print(
-                    f"partition={message.partition} "
-                    f"offset={message.offset} "
-                    f"user={event.get('user_id')} "
-                    f"event={event.get('event_type')} "
-                    f"product={event.get('product_id')}"
+                parsed_event = json.loads(event_value)
+                logger.info(
+                    f"Partition: {msg.partition()} | "
+                    f"Offset: {msg.offset()} | "
+                    f"Event Type: {parsed_event.get('event_type')} | "
+                    f"User: {parsed_event.get('user_id')}"
                 )
-
-            except (UnicodeDecodeError, json.JSONDecodeError) as error:
-
-                print(
-                    f"[INVALID JSON] "
-                    f"partition={message.partition} "
-                    f"offset={message.offset} "
-                    f"error={error}"
-                )
-
-            except Exception as error:
-
-                print(
-                    f"[PROCESSING ERROR] "
-                    f"partition={message.partition} "
-                    f"offset={message.offset} "
-                    f"error={error}"
-                )
+            except json.JSONDecodeError:
+                logger.warning(f"Received non-JSON message: {event_value}")
 
     except KeyboardInterrupt:
-
-        print("\nConsumer stopped.")
-
+        logger.info("Consumer interrupted by user (Ctrl+C).")
     finally:
-
+        # 5. Graceful shutdown
+        logger.info("Closing consumer...")
         consumer.close()
-
+        logger.info("Consumer closed.")
 
 if __name__ == "__main__":
     main()

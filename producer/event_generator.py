@@ -1,226 +1,109 @@
+import sys
+import os
+
+# Add the project root (e-commerce/) to the system path so we can import 'spark' and 'config' modules
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import argparse
 import json
-import random
 import time
 import uuid
 from datetime import datetime, timezone
-from pathlib import Path
+from typing import List, Dict, Any
+import random
+from faker import Faker
 
+from spark.utils.logging_config import get_logger
 
-USERS = [
-    f"user_{i:04d}"
-    for i in range(1, 101)
+logger = get_logger("event_generator")
+# ... rest of the code remains the same ...
+fake = Faker()
+
+# Weighted distribution for realistic e-commerce behavior
+EVENT_WEIGHTS = [
+    ("page_view", 40),
+    ("product_view", 25),
+    ("search", 15),
+    ("add_to_cart", 10),
+    ("remove_from_cart", 3),
+    ("purchase", 5),
+    ("payment_failed", 2)
 ]
 
+EVENT_TYPES = [event for event, weight in EVENT_WEIGHTS for _ in range(weight)]
 
-PRODUCTS = [
-    {
-        "product_id": "prod_001",
-        "name": "Laptop",
-        "category": "Electronics",
-        "price": 65000.00,
-    },
-    {
-        "product_id": "prod_002",
-        "name": "Smartphone",
-        "category": "Electronics",
-        "price": 32000.00,
-    },
-    {
-        "product_id": "prod_003",
-        "name": "Headphones",
-        "category": "Electronics",
-        "price": 3500.00,
-    },
-    {
-        "product_id": "prod_004",
-        "name": "Running Shoes",
-        "category": "Footwear",
-        "price": 4500.00,
-    },
-    {
-        "product_id": "prod_005",
-        "name": "Backpack",
-        "category": "Accessories",
-        "price": 1800.00,
-    },
-    {
-        "product_id": "prod_006",
-        "name": "Watch",
-        "category": "Accessories",
-        "price": 7500.00,
-    },
-    {
-        "product_id": "prod_007",
-        "name": "T-Shirt",
-        "category": "Clothing",
-        "price": 999.00,
-    },
-    {
-        "product_id": "prod_008",
-        "name": "Jeans",
-        "category": "Clothing",
-        "price": 2200.00,
-    },
-]
+DEVICES = ["mobile", "desktop", "tablet"]
+COUNTRIES = ["US", "UK", "CA", "DE", "FR", "AU", "JP"]
 
-
-EVENT_TYPES = {
-    "page_view": 0.35,
-    "product_view": 0.30,
-    "search": 0.12,
-    "add_to_cart": 0.10,
-    "remove_from_cart": 0.05,
-    "purchase": 0.06,
-    "payment_failed": 0.02,
-}
-
-
-DEVICES = [
-    "mobile",
-    "desktop",
-    "tablet",
-]
-
-
-COUNTRIES = [
-    "IN",
-    "US",
-    "UK",
-    "CA",
-    "AU",
-]
-
-
-SEARCH_TERMS = [
-    "laptop",
-    "phone",
-    "headphones",
-    "shoes",
-    "backpack",
-    "watch",
-    "t-shirt",
-    "jeans",
-]
-
-
-def generate_event():
-    """Generate one e-commerce event."""
-
-    user = random.choice(USERS)
-    product = random.choice(PRODUCTS)
-
-    event_type = random.choices(
-        population=list(EVENT_TYPES.keys()),
-        weights=list(EVENT_TYPES.values()),
-        k=1,
-    )[0]
-
+def generate_event() -> Dict[str, Any]:
+    """Generates a single realistic e-commerce event."""
+    event_type = random.choice(EVENT_TYPES)
+    event_id = str(uuid.uuid4())
+    user_id = f"usr_{random.randint(1000, 9999)}"
+    product_id = f"prd_{random.randint(100, 999)}"
+    
     event = {
-        "event_id": str(uuid.uuid4()),
-        "user_id": user,
-        "product_id": product["product_id"],
+        "event_id": event_id,
+        "user_id": user_id,
+        "product_id": product_id,
         "event_type": event_type,
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "price": product["price"],
-        "quantity": random.randint(1, 3),
         "device": random.choice(DEVICES),
-        "country": random.choice(COUNTRIES),
+        "country": random.choice(COUNTRIES)
     }
-
+    
+    # Add conditional fields based on event type
+    if event_type in ["add_to_cart", "remove_from_cart", "purchase", "payment_failed"]:
+        event["price"] = round(random.uniform(9.99, 499.99), 2)
+        event["quantity"] = random.randint(1, 5)
+        
     if event_type == "search":
-        event["search_term"] = random.choice(SEARCH_TERMS)
-
+        event["search_term"] = fake.word()
+        
     return event
 
-
-def generate_file(number_of_events):
-    """Generate events.jsonl as UTF-8."""
-
-    output_dir = Path(__file__).parent.parent / "data"
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    output_file = output_dir / "events.jsonl"
-
-    with output_file.open(
-        "w",
-        encoding="utf-8",
-        newline="\n",
-    ) as file:
-
-        for _ in range(number_of_events):
-            event = generate_event()
-
-            file.write(
-                json.dumps(event, ensure_ascii=False) + "\n"
-            )
-
-    print()
-    print("=" * 60)
-    print("EVENT GENERATION COMPLETE")
-    print("=" * 60)
-    print(f"Events : {number_of_events}")
-    print(f"File   : {output_file}")
-    print(f"Format : UTF-8 JSONL")
-
-
-def stream_events(interval):
-    """Continuously generate events to the terminal."""
-
-    print("Starting e-commerce event stream...")
-    print("Press Ctrl+C to stop.\n")
-
+def generate_events(num_events: int, output_file: str, continuous: bool = False, interval: float = 1.0):
+    """
+    Generates events and writes them to a JSONL file.
+    """
+    logger.info(f"Starting event generation. Output: {output_file}")
+    
     try:
-
-        while True:
-
-            event = generate_event()
-
-            print(
-                json.dumps(
-                    event,
-                    ensure_ascii=False,
-                ),
-                flush=True,
-            )
-
-            time.sleep(interval)
-
+        with open(output_file, "a") as f:
+            count = 0
+            while True:
+                event = generate_event()
+                f.write(json.dumps(event) + "\n")
+                count += 1
+                
+                if count % 100 == 0:
+                    logger.info(f"Generated {count} events...")
+                    
+                if not continuous:
+                    if count >= num_events:
+                        break
+                else:
+                    time.sleep(interval)
+                    
+        logger.info(f"Successfully generated {count} events to {output_file}")
+        
     except KeyboardInterrupt:
-
-        print("\nEvent generator stopped.")
-
-
-def main():
-
-    parser = argparse.ArgumentParser(
-        description="E-commerce event generator"
-    )
-
-    parser.add_argument(
-        "--events",
-        type=int,
-        default=0,
-        help="Number of events to generate into data/events.jsonl.",
-    )
-
-    parser.add_argument(
-        "--interval",
-        type=float,
-        default=1.0,
-        help="Seconds between events in streaming mode.",
-    )
-
-    args = parser.parse_args()
-
-    if args.events > 0:
-
-        generate_file(args.events)
-
-    else:
-
-        stream_events(args.interval)
-
+        logger.info("Event generation interrupted by user (Ctrl+C).")
+    except Exception as e:
+        logger.error(f"Error during event generation: {e}")
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="E-commerce Event Generator")
+    parser.add_argument("--events", type=int, default=100, help="Number of events to generate")
+    parser.add_argument("--output", type=str, default="data/events.jsonl", help="Output file path")
+    parser.add_argument("--continuous", action="store_true", help="Run continuously")
+    parser.add_argument("--interval", type=float, default=0.5, help="Seconds between events (if continuous)")
+    
+    args = parser.parse_args()
+    
+    generate_events(
+        num_events=args.events,
+        output_file=args.output,
+        continuous=args.continuous,
+        interval=args.interval
+    )

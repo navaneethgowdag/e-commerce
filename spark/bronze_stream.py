@@ -46,25 +46,19 @@ def create_spark_session() -> SparkSession:
         .master("local[*]")
         .config(
             "spark.jars.packages",
-            ",".join(
-                [
-                    "org.apache.spark:spark-sql-kafka-0-10_2.13:4.2.0",
-                    "org.apache.hadoop:hadoop-aws:3.5.0",
-                ]
-            ),
+            ",".join([
+                "org.apache.spark:spark-sql-kafka-0-10_2.13:4.2.0",
+                "org.apache.hadoop:hadoop-aws:3.5.0",
+            ])
         )
         .config(
             "spark.hadoop.fs.s3a.aws.credentials.provider",
-            "com.amazonaws.auth.DefaultAWSCredentialsProviderChain",
+            "software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider",
         )
-        .config(
-            "spark.hadoop.fs.s3a.endpoint.region",
-            AWS_REGION,
-        )
-        .config(
-            "spark.hadoop.fs.s3a.path.style.access",
-            "false",
-        )
+        .config("spark.hadoop.fs.s3a.endpoint.region", AWS_REGION)
+        .config("spark.hadoop.fs.s3a.path.style.access", "false")
+        .config("spark.local.dir", "C:/hadoop/tmp")
+        .config("spark.hadoop.fs.s3a.buffer.dir", "C:/hadoop/tmp")
         .getOrCreate()
     )
 
@@ -173,7 +167,7 @@ def write_to_s3(transformed_df):
         )
         .option(
             "checkpointLocation",
-            S3_CHECKPOINT_PATH,
+            "C:/hadoop/spark-checkpoints/ecommerce-bronze",
         )
         .partitionBy("event_date")
         .trigger(processingTime="5 seconds")

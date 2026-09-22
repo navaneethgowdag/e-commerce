@@ -34,9 +34,7 @@ load_dotenv(
 # Configuration
 # ============================================================
 
-DATABRICKS_HOST = os.getenv(
-    "DATABRICKS_HOST"
-)
+DATABRICKS_HOST = os.getenv("DATABRICKS_HOST")
 
 DATABRICKS_SERVER_HOSTNAME = os.getenv(
     "DATABRICKS_SERVER_HOSTNAME"
@@ -101,7 +99,7 @@ FULL_TABLE_NAME = (
 
 
 # ============================================================
-# Connect to Databricks
+# Databricks connection
 # ============================================================
 
 def get_connection():
@@ -126,39 +124,30 @@ def ingest_bronze():
     """
     Register the S3 Bronze Parquet data as a Databricks
     external table.
+
+    The existing Bronze table metadata is recreated so that
+    a new dataset/schema at the same S3 path can be detected.
     """
 
     print("=" * 70)
     print("E-COMMERCE BRONZE INGESTION")
     print("=" * 70)
 
-    print(
-        "Databricks host:",
-        DATABRICKS_HOST
-    )
-
-    print(
-        "S3 Bronze path:",
-        S3_BRONZE_PATH
-    )
-
-    print(
-        "Target table:",
-        FULL_TABLE_NAME
-    )
+    print("Databricks host:", DATABRICKS_HOST)
+    print("S3 Bronze path:", S3_BRONZE_PATH)
+    print("Target table:", FULL_TABLE_NAME)
 
     connection = None
 
     try:
+
         # ----------------------------------------------------
         # Connect
         # ----------------------------------------------------
 
         connection = get_connection()
 
-        print(
-            "Connected to Databricks successfully."
-        )
+        print("Connected to Databricks successfully.")
 
         with connection.cursor() as cursor:
 
@@ -184,23 +173,34 @@ def ingest_bronze():
             )
 
             # ------------------------------------------------
-            # Create external Bronze table
+            # Drop existing Bronze table metadata
+            # ------------------------------------------------
+
+            print(
+                "Removing existing Bronze table definition..."
+            )
+
+            cursor.execute(
+                f"""
+                DROP TABLE IF EXISTS {FULL_TABLE_NAME}
+                """
+            )
+
+            # ------------------------------------------------
+            # Create Bronze external Parquet table
             # ------------------------------------------------
 
             create_table_sql = f"""
-            CREATE TABLE IF NOT EXISTS
-            {FULL_TABLE_NAME}
+            CREATE TABLE {FULL_TABLE_NAME}
             USING PARQUET
             LOCATION '{S3_BRONZE_PATH}'
             """
 
             print(
-                "Creating Bronze table..."
+                "Creating Bronze table from current S3 data..."
             )
 
-            cursor.execute(
-                create_table_sql
-            )
+            cursor.execute(create_table_sql)
 
             # ------------------------------------------------
             # Count records
@@ -214,8 +214,24 @@ def ingest_bronze():
             )
 
             result = cursor.fetchone()
-
             record_count = result[0]
+
+            # ------------------------------------------------
+            # Show schema
+            # ------------------------------------------------
+
+            cursor.execute(
+                f"""
+                DESCRIBE {FULL_TABLE_NAME}
+                """
+            )
+
+            schema_rows = cursor.fetchall()
+
+            print("\nBronze table schema:")
+
+            for row in schema_rows:
+                print(row)
 
             # ------------------------------------------------
             # Show sample data
@@ -236,24 +252,13 @@ def ingest_bronze():
             # ------------------------------------------------
 
             print("=" * 70)
-            print(
-                "BRONZE INGESTION SUCCESSFUL"
-            )
+            print("BRONZE INGESTION SUCCESSFUL")
             print("=" * 70)
 
-            print(
-                "Table:",
-                FULL_TABLE_NAME
-            )
+            print("Table:", FULL_TABLE_NAME)
+            print("Records:", record_count)
 
-            print(
-                "Records:",
-                record_count
-            )
-
-            print(
-                "\nSample rows:"
-            )
+            print("\nSample rows:")
 
             for row in rows:
                 print(row)
@@ -264,9 +269,7 @@ def ingest_bronze():
         print("BRONZE INGESTION FAILED")
         print("=" * 70)
 
-        print(
-            f"Error: {error}"
-        )
+        print(f"Error: {error}")
 
         raise
 

@@ -1,530 +1,760 @@
-import sys
-import os
-
-# Add project root (e-commerce/) to the system path
-PROJECT_ROOT = os.path.dirname(
-    os.path.dirname(os.path.abspath(__file__))
-)
-
-if PROJECT_ROOT not in sys.path:
-    sys.path.append(PROJECT_ROOT)
 
 import argparse
 import json
-import time
-import uuid
 import random
-
-from datetime import datetime, timedelta, timezone
-from typing import List, Dict, Any
-
-from faker import Faker
-
-from spark.utils.logging_config import get_logger
+import uuid
+from datetime import datetime, timedelta
+from pathlib import Path
 
 
-logger = get_logger("event_generator")
+# ============================================================
+# DATE RANGE
+# ============================================================
 
-fake = Faker()
+START_DATE = datetime(2011, 1, 1)
+END_DATE = datetime(2026, 9, 22)
 
 
-# ---------------------------------------------------------------
-# Event distribution
-# ---------------------------------------------------------------
-EVENT_WEIGHTS = [
-    ("page_view", 40),
-    ("product_view", 25),
-    ("search", 15),
-    ("add_to_cart", 10),
-    ("remove_from_cart", 3),
-    ("purchase", 5),
-    ("payment_failed", 2),
-]
+# ============================================================
+# STATIC DATA POOLS
+# ============================================================
 
 EVENT_TYPES = [
-    event
-    for event, weight in EVENT_WEIGHTS
-    for _ in range(weight)
+    "page_view",
+    "product_view",
+    "search",
+    "add_to_cart",
+    "remove_from_cart",
+    "purchase",
+    "payment_failed",
 ]
 
-
-# ---------------------------------------------------------------
-# Static dimensions / random attributes
-# ---------------------------------------------------------------
 DEVICES = [
     "mobile",
     "desktop",
     "tablet",
 ]
 
-COUNTRIES = [
-    "US",
-    "UK",
-    "CA",
-    "DE",
-    "FR",
-    "AU",
-    "JP",
-    "IN",
-    "SG",
-    "AE",
-    "BR",
-    "MX",
-    "ES",
-    "IT",
-    "NL",
-    "SE",
-    "NO",
-    "DK",
-    "FI",
-    "CH",
-    "NZ",
-    "ZA",
-    "KR",
-]
-
-CATEGORIES = [
-    "Electronics",
-    "Clothing",
-    "Footwear",
-    "Home & Kitchen",
-    "Beauty",
-    "Sports",
-    "Books",
-    "Toys",
-    "Grocery",
-    "Accessories",
-]
-
-BRANDS = [
-    "NovaTech",
-    "UrbanEdge",
-    "PrimeStyle",
-    "HomeCraft",
-    "FitZone",
-    "GlowUp",
-    "SoundMax",
-    "TechPro",
-    "EcoLife",
-    "SmartGear",
-    "TrendWear",
-    "PowerPlus",
-]
-
-PRODUCT_NAMES = [
-    "Wireless Headphones",
-    "Bluetooth Speaker",
-    "Smart Watch",
-    "Gaming Mouse",
-    "Mechanical Keyboard",
-    "Running Shoes",
-    "Casual T-Shirt",
-    "Denim Jacket",
-    "Backpack",
-    "Coffee Maker",
-    "Air Fryer",
-    "Water Bottle",
-    "Yoga Mat",
-    "Fitness Band",
-    "LED Desk Lamp",
-    "Phone Case",
-    "Portable Charger",
-    "Sunglasses",
-    "Face Cream",
-    "Protein Powder",
-    "Cookbook",
-    "Action Figure",
-    "Board Game",
-    "Desk Organizer",
-]
-
-PAYMENT_METHODS = [
-    "credit_card",
-    "debit_card",
-    "upi",
-    "paypal",
-    "apple_pay",
-    "google_pay",
-    "cash_on_delivery",
-]
-
 TRAFFIC_SOURCES = [
-    "organic_search",
+    "organic",
     "paid_search",
-    "social_media",
+    "social",
     "email",
     "direct",
-    "affiliate",
     "referral",
 ]
 
-COUPON_CODES = [
-    "WELCOME10",
-    "SAVE20",
-    "NEWUSER15",
-    "FESTIVE25",
-    "SUMMER10",
-    "FLASH30",
-    "VIP20",
-    None,
-    None,
-    None,
+COUNTRIES = [
+    "United States",
+    "Canada",
+    "United Kingdom",
+    "Germany",
+    "France",
+    "Australia",
+    "India",
+]
+
+COUNTRY_MARKET = {
+    "United States": "US",
+    "Canada": "Canada",
+    "United Kingdom": "Europe",
+    "Germany": "Europe",
+    "France": "Europe",
+    "Australia": "APAC",
+    "India": "APAC",
+}
+
+REGIONS = [
+    "West",
+    "East",
+    "Central",
+    "South",
+]
+
+SEGMENTS = [
+    "Consumer",
+    "Corporate",
+    "Home Office",
+]
+
+SHIP_MODES = [
+    "Standard Class",
+    "Second Class",
+    "First Class",
+    "Same Day",
+]
+
+ORDER_PRIORITIES = [
+    "Low",
+    "Medium",
+    "High",
+    "Critical",
 ]
 
 
-# ---------------------------------------------------------------
-# Random date range
-# ---------------------------------------------------------------
-START_DATE = datetime(
-    2020,
-    1,
-    1,
-    tzinfo=timezone.utc,
-)
+# ============================================================
+# PRODUCT CATALOG
+# ============================================================
 
-END_DATE = datetime(
-    2026,
-    12,
-    31,
-    23,
-    59,
-    59,
-    tzinfo=timezone.utc,
-)
+PRODUCTS = [
+    {
+        "id": "TEC-PHO-001",
+        "name": "Smartphone",
+        "category": "Technology",
+        "sub_category": "Phones",
+        "min_price": 200,
+        "max_price": 1800,
+    },
+    {
+        "id": "TEC-PHO-002",
+        "name": "Business Smartphone",
+        "category": "Technology",
+        "sub_category": "Phones",
+        "min_price": 300,
+        "max_price": 1400,
+    },
+    {
+        "id": "TEC-COM-001",
+        "name": "Laptop",
+        "category": "Technology",
+        "sub_category": "Computers",
+        "min_price": 500,
+        "max_price": 2500,
+    },
+    {
+        "id": "TEC-COM-002",
+        "name": "Desktop Computer",
+        "category": "Technology",
+        "sub_category": "Computers",
+        "min_price": 600,
+        "max_price": 3000,
+    },
+    {
+        "id": "TEC-ACC-001",
+        "name": "Wireless Mouse",
+        "category": "Technology",
+        "sub_category": "Accessories",
+        "min_price": 15,
+        "max_price": 80,
+    },
+    {
+        "id": "TEC-ACC-002",
+        "name": "Mechanical Keyboard",
+        "category": "Technology",
+        "sub_category": "Accessories",
+        "min_price": 40,
+        "max_price": 180,
+    },
+    {
+        "id": "TEC-PRI-001",
+        "name": "Laser Printer",
+        "category": "Technology",
+        "sub_category": "Printers",
+        "min_price": 100,
+        "max_price": 800,
+    },
+    {
+        "id": "TEC-PRI-002",
+        "name": "Color Printer",
+        "category": "Technology",
+        "sub_category": "Printers",
+        "min_price": 150,
+        "max_price": 1000,
+    },
+    {
+        "id": "FUR-CHA-001",
+        "name": "Office Chair",
+        "category": "Furniture",
+        "sub_category": "Chairs",
+        "min_price": 80,
+        "max_price": 700,
+    },
+    {
+        "id": "FUR-CHA-002",
+        "name": "Executive Chair",
+        "category": "Furniture",
+        "sub_category": "Chairs",
+        "min_price": 200,
+        "max_price": 1200,
+    },
+    {
+        "id": "FUR-TAB-001",
+        "name": "Office Desk",
+        "category": "Furniture",
+        "sub_category": "Tables",
+        "min_price": 150,
+        "max_price": 1200,
+    },
+    {
+        "id": "FUR-TAB-002",
+        "name": "Conference Table",
+        "category": "Furniture",
+        "sub_category": "Tables",
+        "min_price": 500,
+        "max_price": 2500,
+    },
+    {
+        "id": "FUR-BOO-001",
+        "name": "Bookshelf",
+        "category": "Furniture",
+        "sub_category": "Bookcases",
+        "min_price": 100,
+        "max_price": 900,
+    },
+    {
+        "id": "FUR-FUR-001",
+        "name": "Desk Lamp",
+        "category": "Furniture",
+        "sub_category": "Furnishings",
+        "min_price": 20,
+        "max_price": 150,
+    },
+    {
+        "id": "OFF-PAP-001",
+        "name": "Copy Paper",
+        "category": "Office Supplies",
+        "sub_category": "Paper",
+        "min_price": 5,
+        "max_price": 60,
+    },
+    {
+        "id": "OFF-BIN-001",
+        "name": "Ring Binder",
+        "category": "Office Supplies",
+        "sub_category": "Binders",
+        "min_price": 5,
+        "max_price": 40,
+    },
+    {
+        "id": "OFF-STO-001",
+        "name": "Storage Box",
+        "category": "Office Supplies",
+        "sub_category": "Storage",
+        "min_price": 10,
+        "max_price": 100,
+    },
+    {
+        "id": "OFF-LAB-001",
+        "name": "Shipping Labels",
+        "category": "Office Supplies",
+        "sub_category": "Labels",
+        "min_price": 5,
+        "max_price": 50,
+    },
+    {
+        "id": "OFF-ART-001",
+        "name": "Office Art Set",
+        "category": "Office Supplies",
+        "sub_category": "Art",
+        "min_price": 10,
+        "max_price": 100,
+    },
+]
 
 
-def random_timestamp(
-    start_date: datetime = START_DATE,
-    end_date: datetime = END_DATE,
-) -> str:
+# ============================================================
+# CUSTOMER DATA
+# ============================================================
+
+FIRST_NAMES = [
+    "John",
+    "Michael",
+    "David",
+    "James",
+    "Robert",
+    "William",
+    "Daniel",
+    "Thomas",
+    "Christopher",
+    "Matthew",
+    "Andrew",
+    "Joseph",
+    "Sarah",
+    "Jennifer",
+    "Jessica",
+    "Emily",
+    "Emma",
+    "Olivia",
+    "Sophia",
+    "Ava",
+    "Mia",
+    "Isabella",
+]
+
+LAST_NAMES = [
+    "Smith",
+    "Johnson",
+    "Williams",
+    "Brown",
+    "Jones",
+    "Miller",
+    "Davis",
+    "Wilson",
+    "Anderson",
+    "Taylor",
+    "Thomas",
+    "Moore",
+    "Jackson",
+    "Martin",
+    "Lee",
+    "Harris",
+    "Clark",
+    "Lewis",
+    "Walker",
+    "Hall",
+]
+
+
+# ============================================================
+# DATE GENERATOR
+# ============================================================
+
+def random_timestamp():
     """
-    Generate a random UTC timestamp between start_date and end_date.
+    Generate a completely random date and time.
+
+    The date is generated mathematically.
+    Nothing is read from an external file.
     """
 
-    total_seconds = int(
-        (end_date - start_date).total_seconds()
+    number_of_days = (
+        END_DATE - START_DATE
+    ).days
+
+    random_day = random.randint(
+        0,
+        number_of_days,
+    )
+
+    random_date = START_DATE + timedelta(
+        days=random_day,
     )
 
     random_seconds = random.randint(
         0,
-        total_seconds,
+        86399,
     )
 
-    random_dt = start_date + timedelta(
-        seconds=random_seconds
+    return random_date + timedelta(
+        seconds=random_seconds,
     )
 
-    return random_dt.isoformat()
+
+# ============================================================
+# RANDOM VALUE GENERATORS
+# ============================================================
+
+def random_customer_name():
+    return (
+        random.choice(FIRST_NAMES)
+        + " "
+        + random.choice(LAST_NAMES)
+    )
 
 
-def generate_event() -> Dict[str, Any]:
-    """
-    Generate one realistic random e-commerce event.
-    """
+def random_product():
+    return random.choice(PRODUCTS)
 
-    event_type = random.choice(EVENT_TYPES)
 
-    event_id = str(uuid.uuid4())
-
-    user_id = f"usr_{random.randint(1000, 99999)}"
-
-    product_id = f"prd_{random.randint(100, 9999)}"
-
-    session_id = f"sess_{uuid.uuid4().hex[:12]}"
-
-    order_id = None
-
-    category = random.choice(CATEGORIES)
-
-    brand = random.choice(BRANDS)
-
-    product_name = random.choice(PRODUCT_NAMES)
-
-    product_price = round(
-        random.uniform(5.99, 1999.99),
+def random_price(product):
+    return round(
+        random.uniform(
+            product["min_price"],
+            product["max_price"],
+        ),
         2,
     )
 
-    discount_percent = random.choice(
-        [0, 0, 0, 5, 10, 15, 20, 25, 30]
+
+def random_quantity():
+    return random.choices(
+        population=[
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            10,
+        ],
+        weights=[
+            45,
+            20,
+            12,
+            8,
+            5,
+            3,
+            2,
+            1,
+            1,
+        ],
+        k=1,
+    )[0]
+
+
+def random_discount():
+    return random.choices(
+        population=[
+            0,
+            5,
+            10,
+            15,
+            20,
+            25,
+            30,
+            40,
+            50,
+        ],
+        weights=[
+            35,
+            15,
+            15,
+            10,
+            8,
+            6,
+            5,
+            4,
+            2,
+        ],
+        k=1,
+    )[0]
+
+
+# ============================================================
+# EVENT GENERATOR
+# ============================================================
+
+def generate_event():
+
+    timestamp = random_timestamp()
+
+    event_type = random.choice(
+        EVENT_TYPES
     )
 
-    traffic_source = random.choice(
-        TRAFFIC_SOURCES
+    product = random_product()
+
+    country = random.choice(
+        COUNTRIES
+    )
+
+    market = COUNTRY_MARKET[
+        country
+    ]
+
+    quantity = random_quantity()
+
+    discount = random_discount()
+
+    unit_price = random_price(
+        product
+    )
+
+    sales = round(
+        unit_price
+        * quantity
+        * (1 - discount / 100),
+        2,
     )
 
     event = {
-        "event_id": event_id,
+        "event_id": str(
+            uuid.uuid4()
+        ),
 
-        "user_id": user_id,
+        "user_id": (
+            f"user_"
+            f"{random.randint(1, 100000):06d}"
+        ),
 
-        "session_id": session_id,
-
-        "product_id": product_id,
+        "session_id": str(
+            uuid.uuid4()
+        ),
 
         "event_type": event_type,
 
-        "timestamp": random_timestamp(),
+        "timestamp": timestamp.isoformat(),
 
-        "device": random.choice(DEVICES),
+        "event_date": timestamp.strftime(
+            "%Y-%m-%d"
+        ),
 
-        "country": random.choice(COUNTRIES),
+        "device": random.choice(
+            DEVICES
+        ),
 
-        "category": category,
+        "traffic_source": random.choice(
+            TRAFFIC_SOURCES
+        ),
 
-        "brand": brand,
+        "customer_name": (
+            random_customer_name()
+        ),
 
-        "product_name": product_name,
+        "segment": random.choice(
+            SEGMENTS
+        ),
 
-        "product_price": product_price,
+        "country": country,
 
-        "discount_percent": discount_percent,
+        "market": market,
 
-        "traffic_source": traffic_source,
+        "region": random.choice(
+            REGIONS
+        ),
+
+        "product_id": product["id"],
+
+        "category": product["category"],
+
+        "sub_category": product[
+            "sub_category"
+        ],
+
+        "product_name": product["name"],
+
+        "product_price": unit_price,
+
+        "quantity": quantity,
+
+        "discount_percent": discount,
+
+        "sales": sales,
+
+        "ship_mode": random.choice(
+            SHIP_MODES
+        ),
+
+        "order_priority": random.choice(
+            ORDER_PRIORITIES
+        ),
     }
 
+    # --------------------------------------------------------
+    # EVENT-SPECIFIC INFORMATION
+    # --------------------------------------------------------
 
-    # -----------------------------------------------------------
-    # Search event
-    # -----------------------------------------------------------
-    if event_type == "search":
+    if event_type == "page_view":
 
-        event["search_term"] = fake.word()
+        event["page"] = random.choice([
+            "home",
+            "category",
+            "product",
+            "search",
+            "cart",
+            "checkout",
+        ])
 
+        event["duration_seconds"] = (
+            random.randint(5, 900)
+        )
 
-    # -----------------------------------------------------------
-    # Cart / purchase related events
-    # -----------------------------------------------------------
-    if event_type in [
-        "add_to_cart",
-        "remove_from_cart",
-        "purchase",
-        "payment_failed",
-    ]:
+    elif event_type == "product_view":
 
-        event["quantity"] = random.randint(
-            1,
+        event[
+            "view_duration_seconds"
+        ] = random.randint(
             5,
+            600,
         )
 
-        event["price"] = round(
-            product_price
-            * (1 - discount_percent / 100),
-            2,
-        )
+    elif event_type == "search":
 
+        event["search_query"] = random.choice([
+            product["name"],
+            product["category"],
+            product["sub_category"],
+            "office supplies",
+            "laptop",
+            "chair",
+            "printer",
+            "phone",
+            "desk",
+            "computer",
+        ])
 
-    # -----------------------------------------------------------
-    # Purchase event
-    # -----------------------------------------------------------
-    if event_type == "purchase":
+    elif event_type == "add_to_cart":
 
-        order_id = f"ord_{uuid.uuid4().hex[:12]}"
+        event["cart_quantity"] = quantity
 
-        event["order_id"] = order_id
+    elif event_type == "remove_from_cart":
 
-        event["payment_method"] = random.choice(
-            PAYMENT_METHODS
-        )
-
-        event["coupon_code"] = random.choice(
-            COUPON_CODES
-        )
-
-        event["shipping_cost"] = round(
-            random.uniform(0, 30),
-            2,
-        )
-
-        event["tax"] = round(
-            event["price"]
-            * random.uniform(0.02, 0.18),
-            2,
-        )
-
-        event["total_amount"] = round(
-            (
-                event["price"]
-                * event["quantity"]
+        event["removed_quantity"] = (
+            random.randint(
+                1,
+                quantity,
             )
-            + event["shipping_cost"]
-            + event["tax"],
-            2,
         )
 
+    elif event_type == "purchase":
 
-    # -----------------------------------------------------------
-    # Payment failure event
-    # -----------------------------------------------------------
-    if event_type == "payment_failed":
-
-        event["payment_method"] = random.choice(
-            PAYMENT_METHODS
+        event["order_id"] = (
+            f"ORD-"
+            f"{random.randint(100000, 999999)}"
         )
 
-        event["failure_reason"] = random.choice([
-            "insufficient_funds",
-            "card_declined",
-            "expired_card",
-            "invalid_cvv",
-            "bank_error",
-            "network_error",
-        ])
+        event["payment_method"] = (
+            random.choice([
+                "credit_card",
+                "debit_card",
+                "paypal",
+                "upi",
+                "net_banking",
+            ])
+        )
 
+        event["purchase_status"] = (
+            "completed"
+        )
 
-    # -----------------------------------------------------------
-    # Add cart event
-    # -----------------------------------------------------------
-    if event_type == "add_to_cart":
+    elif event_type == "payment_failed":
 
-        event["cart_id"] = f"cart_{uuid.uuid4().hex[:10]}"
+        event["order_id"] = (
+            f"ORD-"
+            f"{random.randint(100000, 999999)}"
+        )
 
+        event["failure_reason"] = (
+            random.choice([
+                "insufficient_funds",
+                "card_declined",
+                "network_error",
+                "invalid_card",
+                "timeout",
+            ])
+        )
 
-    # -----------------------------------------------------------
-    # Remove cart event
-    # -----------------------------------------------------------
-    if event_type == "remove_from_cart":
-
-        event["cart_id"] = f"cart_{uuid.uuid4().hex[:10]}"
-
-        event["removal_reason"] = random.choice([
-            "changed_mind",
-            "too_expensive",
-            "added_by_mistake",
-            "found_alternative",
-            "other",
-        ])
-
+        event["purchase_status"] = (
+            "failed"
+        )
 
     return event
 
 
-def generate_events(
-    num_events: int,
-    output_file: str,
-    continuous: bool = False,
-    interval: float = 1.0,
-):
-    """
-    Generate events and write them to a JSONL file.
-    """
+# ============================================================
+# MAIN GENERATION LOOP
+# ============================================================
 
-    logger.info(
-        f"Starting event generation. "
-        f"Output: {output_file}"
+def generate_events(
+    number_of_events,
+    output_file,
+):
+
+    output_path = Path(
+        output_file
     )
 
-    try:
+    output_path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
 
-        # Ensure output directory exists
-        output_dir = os.path.dirname(output_file)
+    print()
+    print("=" * 60)
+    print("SYNTHETIC E-COMMERCE EVENT GENERATOR")
+    print("=" * 60)
+    print(
+        f"Events     : {number_of_events:,}"
+    )
+    print(
+        f"Date range : "
+        f"{START_DATE.date()} -> "
+        f"{END_DATE.date()}"
+    )
+    print(
+        f"Output     : {output_path}"
+    )
+    print(
+        "Excel      : NOT USED"
+    )
+    print("=" * 60)
+    print()
 
-        if output_dir:
-            os.makedirs(
-                output_dir,
-                exist_ok=True,
+    with open(
+        output_path,
+        "w",
+        encoding="utf-8",
+    ) as file:
+
+        for i in range(
+            number_of_events
+        ):
+
+            event = generate_event()
+
+            file.write(
+                json.dumps(
+                    event,
+                    separators=(",", ":"),
+                )
+                + "\n"
             )
 
-
-        with open(
-            output_file,
-            "a",
-            encoding="utf-8",
-        ) as f:
-
-            count = 0
-
-            while True:
-
-                event = generate_event()
-
-                f.write(
-                    json.dumps(event)
-                    + "\n"
+            if (
+                (i + 1) % 5000 == 0
+                or i + 1 == number_of_events
+            ):
+                print(
+                    f"Generated "
+                    f"{i + 1:,} / "
+                    f"{number_of_events:,}"
                 )
 
-                # Flush immediately so another process
-                # can consume the newly written event.
-                f.flush()
-
-                count += 1
-
-                if count % 100 == 0:
-
-                    logger.info(
-                        f"Generated {count} events..."
-                    )
+    print()
+    print(
+        f"Successfully generated "
+        f"{number_of_events:,} events."
+    )
+    print(
+        f"File: {output_path}"
+    )
 
 
-                if not continuous:
+# ============================================================
+# CLI
+# ============================================================
 
-                    if count >= num_events:
-                        break
-
-                else:
-
-                    time.sleep(interval)
-
-
-        logger.info(
-            f"Successfully generated "
-            f"{count} events to {output_file}"
-        )
-
-
-    except KeyboardInterrupt:
-
-        logger.info(
-            "Event generation interrupted "
-            "by user (Ctrl+C)."
-        )
-
-
-    except Exception as e:
-
-        logger.exception(
-            f"Error during event generation: {e}"
-        )
-
-
-if __name__ == "__main__":
+def main():
 
     parser = argparse.ArgumentParser(
-        description="E-commerce Event Generator"
+        description=(
+            "Generate synthetic "
+            "e-commerce events."
+        )
     )
 
     parser.add_argument(
         "--events",
         type=int,
-        default=100,
-        help="Number of events to generate",
+        default=10000,
+        help=(
+            "Number of events "
+            "to generate."
+        ),
     )
 
     parser.add_argument(
         "--output",
-        type=str,
         default="data/events.jsonl",
-        help="Output JSONL file",
-    )
-
-    parser.add_argument(
-        "--continuous",
-        action="store_true",
-        help="Run continuously",
-    )
-
-    parser.add_argument(
-        "--interval",
-        type=float,
-        default=0.5,
-        help="Seconds between events",
+        help=(
+            "Output JSONL file."
+        ),
     )
 
     args = parser.parse_args()
 
+    if args.events <= 0:
+        raise ValueError(
+            "--events must be greater than 0."
+        )
+
     generate_events(
-        num_events=args.events,
+        number_of_events=args.events,
         output_file=args.output,
-        continuous=args.continuous,
-        interval=args.interval,
     )
+
+
+if __name__ == "__main__":
+    main()

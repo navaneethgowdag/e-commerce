@@ -1,236 +1,260 @@
 import os
-import sys
 
-# ---------------------------------------------------------------
-# Make project root importable.
-# ---------------------------------------------------------------
-PROJECT_ROOT = os.path.dirname(
-    os.path.dirname(os.path.abspath(__file__))
+# ============================================================
+# Windows / Hadoop environment
+# ============================================================
+
+HADOOP_HOME = r"C:\hadoop"
+HADOOP_BIN = os.path.join(HADOOP_HOME, "bin")
+
+os.environ["HADOOP_HOME"] = HADOOP_HOME
+os.environ["HADOOP_HOME_DIR"] = HADOOP_HOME
+os.environ["hadoop_home_dir"] = HADOOP_HOME
+os.environ["SPARK_LOCAL_HOSTNAME"] = "localhost"
+os.environ["SPARK_LOCAL_IP"] = "127.0.0.1"
+os.environ["PATH"] = (
+    HADOOP_BIN
+    + os.pathsep
+    + os.environ.get("PATH", "")
+)
+os.environ["JAVA_TOOL_OPTIONS"] = (
+    "-Dhadoop.home.dir=C:/hadoop"
 )
 
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
 
+# ============================================================
+# Imports
+# ============================================================
 
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import (
     col,
     from_json,
-    to_date,
     to_timestamp,
+    to_date,
 )
 
 from config.config import config
-from config.aws_config import (
-    AWS_REGION,
-    S3_BRONZE_PATH,
-    S3_CHECKPOINT_PATH,
-)
-from spark.utils.logging_config import get_logger
 from spark.utils.schema import EVENT_SCHEMA
+from spark.utils.logging_config import get_logger
 
 
 logger = get_logger("bronze_stream")
 
 
-def create_spark_session() -> SparkSession:
-    """
-    Create SparkSession with Kafka and S3A dependencies.
-    """
+# ============================================================
+# Spark
+# ============================================================
 
-    logger.info("Initializing SparkSession...")
+def create_spark_session():
 
-    spark = (
+    return (
         SparkSession.builder
-        .appName("EcommerceBronzeStream")
-        .master("local[*]")
+        .appName("Ecommerce-Kafka-Bronze")
+        .master("local[1]")
+        .config("spark.driver.host", "localhost")
+        .config("spark.driver.bindAddress", "127.0.0.1")
+        .config("spark.ui.enabled", "false")
         .config(
             "spark.jars.packages",
-            ",".join([
-                "org.apache.spark:spark-sql-kafka-0-10_2.13:4.2.0",
-                "org.apache.hadoop:hadoop-aws:3.5.0",
-            ])
+            "org.apache.spark:spark-sql-kafka-0-10_2.13:4.2.0"
         )
-        .config(
-            "spark.hadoop.fs.s3a.aws.credentials.provider",
-            "software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider",
-        )
-        .config("spark.hadoop.fs.s3a.endpoint.region", AWS_REGION)
-        .config("spark.hadoop.fs.s3a.path.style.access", "false")
-        .config("spark.local.dir", "C:/hadoop/tmp")
-        .config("spark.hadoop.fs.s3a.buffer.dir", "C:/hadoop/tmp")
         .getOrCreate()
     )
 
-    spark.sparkContext.setLogLevel("WARN")
 
-    logger.info("SparkSession initialized successfully.")
+# ============================================================
+# Main
+# ============================================================
 
-    return spark
+def main():
 
-
-def create_kafka_stream(spark: SparkSession):
-    """
-    Read raw events from Kafka.
-    """
+    logger.info("==========================================")
+    logger.info("E-COMMERCE KAFKA -> SPARK -> BRONZE")
+    logger.info("==========================================")
 
     logger.info(
-        f"Connecting to Kafka: "
+        f"Kafka bootstrap servers: "
         f"{config.KAFKA_BOOTSTRAP_SERVERS}"
     )
 
-    return (
+    logger.info(
+        f"Kafka topic: "
+        f"{config.KAFKA_TOPIC}"
+    )
+
+    logger.info(
+        f"Bronze output: "
+        f"{config.BRONZE_OUTPUT_PATH}"
+    )
+
+    logger.info(
+        f"Checkpoint: "
+        f"{config.SPARK_CHECKPOINT_DIR}"
+    )
+
+    spark = create_spark_session()
+
+    spark.sparkContext.setLogLevel("WARN")
+
+    logger.info(
+        f"Spark version: "
+        f"{spark.version}"
+    )
+
+    # ========================================================
+    # Kafka source
+    # ========================================================
+
+    logger.info("Creating Kafka streaming source...")
+
+    kafka_df = (
         spark.readStream
         .format("kafka")
         .option(
             "kafka.bootstrap.servers",
-            config.KAFKA_BOOTSTRAP_SERVERS,
+            config.KAFKA_BOOTSTRAP_SERVERS
         )
         .option(
             "subscribe",
-            config.KAFKA_TOPIC,
+            config.KAFKA_TOPIC
         )
         .option(
             "startingOffsets",
-            "earliest",
+            "earliest"
         )
         .option(
             "failOnDataLoss",
-            "false",
+            "false"
+        )
+        .option(
+            "maxOffsetsPerTrigger",
+            "10000"
         )
         .load()
     )
 
+    logger.info("Kafka streaming source created.")
 
-def transform_events(kafka_df):
-    """
-    Parse Kafka JSON values into structured columns.
-    """
+    # ========================================================
+    # Parse Kafka JSON
+    # ========================================================
 
-    logger.info("Parsing Kafka JSON events...")
+    parsed_df = (
+        kafka_df
+        .select(
+            col("key")
+            .cast("string")
+            .alias("kafka_key"),
 
-    parsed_df = kafka_df.select(
-        from_json(
-            col("value").cast("string"),
-            EVENT_SCHEMA,
-        ).alias("data"),
+            col("value")
+            .cast("string")
+            .alias("json_value"),
 
-        col("topic"),
-        col("partition"),
-        col("offset"),
-        col("timestamp").alias("kafka_timestamp"),
+            col("topic"),
+            col("partition"),
+            col("offset"),
+            col("timestamp").alias("kafka_timestamp"),
+        )
+        .withColumn(
+            "event",
+            from_json(
+                col("json_value"),
+                EVENT_SCHEMA
+            )
+        )
     )
 
-    flattened_df = parsed_df.select(
-        "data.*",
-        "topic",
-        "partition",
-        "offset",
-        "kafka_timestamp",
-    )
+    # ========================================================
+    # Flatten event
+    # ========================================================
 
-    transformed_df = (
-        flattened_df
+    bronze_df = (
+        parsed_df
+        .select(
+            "kafka_key",
+
+            "topic",
+            "partition",
+            "offset",
+            "kafka_timestamp",
+
+            "event.*"
+        )
         .withColumn(
             "event_timestamp",
-            to_timestamp(col("timestamp")),
+            to_timestamp(
+                col("timestamp")
+            )
         )
         .withColumn(
-            "event_date",
-            to_date(col("event_timestamp")),
+            "event_date_parsed",
+            to_date(
+                col("event_date")
+            )
         )
     )
 
-    return transformed_df
-
-
-def write_to_s3(transformed_df):
-    """
-    Write Bronze events to S3 using Parquet.
-    """
+    # ========================================================
+    # Write Bronze Parquet
+    # ========================================================
 
     logger.info(
-        f"Bronze destination: {S3_BRONZE_PATH}"
-    )
-
-    logger.info(
-        f"Checkpoint destination: {S3_CHECKPOINT_PATH}"
+        "Starting Bronze streaming query..."
     )
 
     query = (
-        transformed_df.writeStream
+        bronze_df.writeStream
         .format("parquet")
         .outputMode("append")
         .option(
             "path",
-            S3_BRONZE_PATH,
+            config.BRONZE_OUTPUT_PATH
         )
         .option(
             "checkpointLocation",
-            "C:/hadoop/spark-checkpoints/ecommerce-bronze",
+            config.SPARK_CHECKPOINT_DIR
         )
-        .partitionBy("event_date")
-        .trigger(processingTime="5 seconds")
+        .partitionBy(
+            "event_date_parsed"
+        )
+        .trigger(
+            processingTime="10 seconds"
+        )
         .start()
     )
 
-    return query
+    logger.info(
+        "Bronze streaming query started."
+    )
 
-
-def main():
-    spark = None
-    query = None
+    logger.info(
+        "Waiting for Kafka events..."
+    )
 
     try:
-        logger.info("=" * 70)
-        logger.info("E-COMMERCE KAFKA -> SPARK -> S3 BRONZE")
-        logger.info("=" * 70)
-
-        spark = create_spark_session()
-
-        # 1. Read Kafka.
-        kafka_df = create_kafka_stream(spark)
-
-        # 2. Parse/transform events.
-        transformed_df = transform_events(kafka_df)
-
-        # 3. Write Bronze to S3.
-        query = write_to_s3(transformed_df)
-
-        logger.info(
-            "Bronze streaming query started successfully."
-        )
-
-        logger.info(
-            "Writing Kafka events to AWS S3..."
-        )
 
         query.awaitTermination()
 
     except KeyboardInterrupt:
+
         logger.info(
-            "Bronze stream interrupted by user."
+            "Stopping Bronze streaming query..."
         )
 
-    except Exception as error:
-        logger.exception(
-            f"Bronze stream failed: {error}"
+        query.stop()
+
+        logger.info(
+            "Bronze streaming query stopped."
         )
 
     finally:
-        if query is not None:
-            try:
-                query.stop()
-            except Exception:
-                pass
 
-        if spark is not None:
-            try:
-                spark.stop()
-            except Exception:
-                pass
+        spark.stop()
 
-        logger.info("Bronze application stopped.")
+        logger.info(
+            "Spark session stopped."
+        )
 
 
 if __name__ == "__main__":

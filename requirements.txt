@@ -27,3 +27,6 @@ databricks-sql-connector==4.5.0
 # Testing
 # ----------------------------
 pytest==9.1.1
+
+kafka-python==2.2.15
+pyarrow==21.0.0
